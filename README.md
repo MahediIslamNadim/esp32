@@ -101,6 +101,9 @@ Key defaults (ESP32):
 
 ## ⚙️ Setup & flying
 
+📖 Full walkthrough: **[SETUP.md](SETUP.md)** — complete step-by-step setup guide,
+from installing tools to first flight.
+
 This firmware is flash-ready, but a flying drone still needs hardware assembly
 and configuration:
 
