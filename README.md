@@ -103,6 +103,8 @@ Key defaults (ESP32):
 
 📖 Full walkthrough: **[SETUP.md](SETUP.md)** — complete step-by-step setup guide,
 from installing tools to first flight.
+🔧 Per-device settings: **[HARDWARE.md](HARDWARE.md)** — exact wiring + CLI for
+each supported gyro, ESC protocol and receiver.
 
 This firmware is flash-ready, but a flying drone still needs hardware assembly
 and configuration:
