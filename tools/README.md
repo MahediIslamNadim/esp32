@@ -165,8 +165,30 @@ success.
 ```
 python3 tools/espfc-setup.py            # interactive
 python3 tools/espfc-setup.py --check    # verify dependencies only, then exit
+python3 tools/espfc-setup.py --no-update # skip the GitHub update check
 ./setup.sh --check                      # same, via the bootstrapper
 ```
+
+## Auto-update from GitHub
+
+On startup (after the dependency check) the tool checks GitHub for newer commits
+on your current branch's upstream. If your checkout is behind, it lists the
+incoming commits and prompts:
+
+```
+New version found
+  1) Update (default)
+  2) Skip
+```
+
+- **Update** runs `git pull` (fast-forward when possible), so every changed file
+  in the repo is refreshed, then the tool restarts itself with the new code.
+- **Skip** continues with the current version.
+
+The check is silently skipped when the folder isn't a git checkout, has no
+remote configured, or GitHub can't be reached (offline). Use `--no-update` to
+bypass it entirely. Local uncommitted changes that would block a pull are
+reported so you can `git stash` and retry.
 
 ## How configuration is applied
 

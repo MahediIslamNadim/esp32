@@ -228,6 +228,77 @@ def relaunch_in_venv():
     script = os.path.abspath(__file__)
     os.execve(vpy, [vpy, script, *sys.argv[1:]], env)
 
+# ---- self-update from GitHub -------------------------------------------------
+
+def _git(*args):
+    """Run a git command in the project root and capture its output."""
+    return subprocess.run(["git", "-C", PROJECT_ROOT, *args],
+                          capture_output=True, text=True)
+
+def git_available():
+    return (shutil.which("git") is not None
+            and os.path.isdir(os.path.join(PROJECT_ROOT, ".git")))
+
+def check_for_updates():
+    """Check GitHub for newer commits; offer to pull them in (Update / Skip)."""
+    if os.environ.get("ESPFC_UPDATED") == "1":
+        return  # we just restarted right after updating
+    if not git_available():
+        return  # not a git checkout — nothing to update
+
+    up = _git("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    if up.returncode != 0:
+        return  # no upstream/remote configured for this branch
+    upstream = up.stdout.strip()
+
+    info("Checking GitHub for updates ...")
+    if _git("fetch", "--quiet").returncode != 0:
+        warn("Could not reach GitHub (offline?). Skipping update check.")
+        return
+
+    counts = _git("rev-list", "--left-right", "--count", f"HEAD...{upstream}")
+    if counts.returncode != 0:
+        return
+    try:
+        ahead, behind = (int(x) for x in counts.stdout.split())
+    except ValueError:
+        return
+
+    if behind == 0:
+        ok("Already up to date.")
+        return
+
+    warn(f"{behind} new update(s) available on {upstream}:")
+    log = _git("log", "--oneline", "--no-decorate", f"HEAD..{upstream}")
+    for line in log.stdout.strip().splitlines()[:10]:
+        print(f"  {C.DIM}{line}{C.END}")
+    if ahead:
+        warn(f"You also have {ahead} local commit(s) not on GitHub.")
+
+    choice = choose("New version found", ["Update", "Skip"], 0)
+    if choice == "Skip":
+        info("Skipped — continuing with the current version.")
+        return
+    do_update(ahead)
+
+def do_update(ahead):
+    """Pull the latest files, then relaunch the tool with the new code."""
+    info("Updating from GitHub ...")
+    if ahead == 0:
+        code = run(["git", "-C", PROJECT_ROOT, "merge", "--ff-only", "@{u}"])
+    else:
+        # local commits exist — a plain pull keeps them and merges remote work
+        code = run(["git", "-C", PROJECT_ROOT, "pull", "--no-edit"])
+    if code != 0:
+        err("Update failed (uncommitted changes or a conflict).")
+        warn("Resolve it manually, e.g.:  git stash && git pull")
+        return
+    ok("Updated to the latest version.")
+    info("Restarting with the updated tool ...")
+    env = dict(os.environ, ESPFC_UPDATED="1")
+    os.execve(sys.executable,
+              [sys.executable, os.path.abspath(__file__), *sys.argv[1:]], env)
+
 def ensure_pip():
     try:
         import pip  # noqa: F401
@@ -608,6 +679,8 @@ def main():
     ap = argparse.ArgumentParser(description="ESP-FC guided setup & flasher")
     ap.add_argument("--check", action="store_true",
                     help="verify dependencies and exit")
+    ap.add_argument("--no-update", action="store_true",
+                    help="skip the GitHub update check on startup")
     args = ap.parse_args()
 
     banner()
@@ -623,6 +696,9 @@ def main():
     if not os.path.exists(os.path.join(PROJECT_ROOT, "platformio.ini")):
         err("platformio.ini not found — run this from the ESP-FC project root.")
         sys.exit(1)
+
+    if not args.no_update:
+        check_for_updates()  # may pull updates and relaunch
 
     try:
         menu()
