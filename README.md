@@ -1,55 +1,116 @@
-# ESP-FC — ESP32 flight controller firmware
+# ESP-FC — ESP32 Flight Controller Firmware
 
-ESP-FC firmware for the **ESP32**, organized as PlatformIO libraries by subsystem.
+[![PlatformIO Build](https://github.com/MahediIslamNadim/esp32/actions/workflows/build.yml/badge.svg)](https://github.com/MahediIslamNadim/esp32/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform: ESP32](https://img.shields.io/badge/Platform-ESP32-blue.svg)](https://www.espressif.com/)
+
+A complete, **buildable** multirotor flight controller firmware for the **ESP32**
+(and ESP32-S3/S2/C3), built with PlatformIO and the Arduino-ESP32 framework.
 
 > Based on **[ESP-FC](https://github.com/rtlopez/esp-fc)** by Rafał Łopez (rtlopez).
 > Licensed under the MIT License — see [`LICENSE`](LICENSE).
 
-> ✅ This project is **buildable with PlatformIO**. Each subsystem lives under
-> `lib/<Name>/src/`, the entry point is `src/main.cpp`, and `platformio.ini`
-> defines the targets, build flags and the custom partition table.
-> (Note: it does **not** work in the Arduino IDE — use PlatformIO.)
->
-> ```
-> pio run -e esp32              # build
-> pio run -e esp32 -t upload    # build + flash to ESP32
-> pio device monitor            # open serial monitor (115200)
-> ```
->
-> Verified build: `esp32` env compiles and produces `firmware.bin`
-> (Flash ~77%, RAM ~24%). Other envs available: `esp32s3`, `esp32s2`, `esp32c3`.
+---
 
-## Layout
+## ✨ Features
 
-| Folder | What it contains | Files |
-| ------ | ---------------- | ----- |
-| `src/` | Entry point (`main.cpp`) | 1 |
-| `Espfc/` | Core firmware | 164 |
-| `Espfc/Control/` | PID, attitude **Fusion** (incl. EKF wiring), Rates | |
-| `Espfc/Sensor/` | gyro, accel, baro, mag, GPS, voltage | |
-| `Espfc/Rc/` | RC protocols (CRSF, SBUS, IBUS, PPM) | |
-| `Espfc/Output/` | motor/ESC mixing & output | |
-| `Espfc/Device/` | chip drivers (gyro/baro/mag) | |
-| `Espfc/Connect/` | MSP / CLI | |
-| `Espfc/Blackbox/`, `Telemetry/`, `Wireless` | logging, telemetry, WiFi/ESP-NOW | |
-| `Espfc/Target/` | per-board pin definitions (`TargetESP32.h`, ...) | |
-| `Espfc/Utils/` | math, filters, helpers | |
-| `AHRS/` | attitude estimation: Madgwick, Mahony, Kalman, **Ekf** | 9 |
-| `EscDriver/` | ESC protocols (DSHOT/PWM/...) | 11 |
-| `Gps/` | GPS parsing | 3 |
-| `betaflight/` | Betaflight-compatible blackbox/types | 80 |
-| `printf/`, `EspWire/`, `MultiButton/` | support libs | 9 |
+- **Flight control** — PID controller, configurable rates, multiple flight modes
+- **Attitude estimation (AHRS)** — Madgwick, Mahony, Kalman and **EKF** fusion
+- **Sensors** — gyro / accelerometer, barometer, magnetometer, GPS, battery voltage & current
+- **RC protocols** — CRSF, SBUS, IBUS, PPM
+- **ESC protocols** — DShot, OneShot, Multishot, Brushed/PWM (via `EscDriver`)
+- **Connectivity** — MSP & CLI, Blackbox logging, telemetry, WiFi / ESP-NOW
+- **Dual-core** — separate gyro and PID tasks on FreeRTOS (ESP32)
+
+## 🛠️ Requirements
+
+- An ESP32 board (WROOM / DevKit / `lolin32`), or ESP32-S3 / S2 / C3
+- [PlatformIO Core](https://platformio.org/install) (`pip install platformio`)
+- Hardware to fly — see [`esp32-connection-guide.md`](esp32-connection-guide.md)
+
+## 🚀 Build & Flash
+
+```bash
+# Build firmware
+pio run -e esp32
+
+# Build and flash to a connected ESP32 (USB)
+pio run -e esp32 -t upload
+
+# Open the serial monitor / CLI (115200 baud)
+pio device monitor
+```
+
+Available environments: `esp32` (default), `esp32s3`, `esp32s2`, `esp32c3`.
+Each push is automatically built for all four targets via GitHub Actions.
+
+> ⚠️ Use **PlatformIO**, not the Arduino IDE — the firmware needs the custom
+> partition table (`partitions_4M_nota.csv`) and specific build flags that the
+> Arduino IDE does not provide.
+
+## 📂 Project layout
+
+```
+esp32/
+├── platformio.ini            # build targets, flags, partition table
+├── partitions_4M_nota.csv    # custom ESP32 partition table (required)
+├── src/main.cpp              # entry point (setup/loop, FreeRTOS tasks)
+└── lib/                      # firmware libraries (PlatformIO)
+    ├── Espfc/src/            # core firmware
+    ├── AHRS/src/             # attitude estimation (Madgwick/Mahony/Kalman/EKF)
+    ├── EscDriver/src/        # ESC protocols (DShot/PWM/…)
+    ├── Gps/src/              # GPS parsing
+    ├── betaflight/src/       # Betaflight-compatible blackbox/types
+    ├── printf/src/           # lightweight printf
+    ├── EspWire/src/          # I2C helper
+    └── MultiButton/src/      # button handling
+```
+
+Inside `lib/Espfc/src/`:
+
+| Folder | What it contains |
+| ------ | ---------------- |
+| `Control/` | PID, attitude fusion (incl. EKF wiring), rates |
+| `Sensor/`  | gyro, accel, baro, mag, GPS, voltage |
+| `Rc/`      | RC protocols (CRSF, SBUS, IBUS, PPM) |
+| `Output/`  | motor / ESC mixing & output |
+| `Device/`  | chip drivers (gyro / baro / mag) |
+| `Connect/` | MSP / CLI |
+| `Blackbox/`, `Telemetry/`, `Wireless/` | logging, telemetry, WiFi / ESP-NOW |
+| `Target/`  | per-board pin definitions (`TargetESP32.h`, …) |
+| `Utils/`   | math, filters, helpers |
 
 Total: ~279 files, ~36,000 lines.
 
-## Build configuration (for reference)
+## 🔌 Wiring & pin mapping
 
-- `platformio.ini.reference` — copy of the build config (targets, flags).
-- `partitions_4M_nota.csv` — the custom ESP32 partition table the firmware
-  requires (Arduino IDE's default partitions will not match).
+Full wiring instructions are in **[`esp32-connection-guide.md`](esp32-connection-guide.md)**.
 
-## Pin mapping
+ESP32 default pins live in `lib/Espfc/src/Target/TargetESP32.h` and
+`TargetEsp32Common.h`. Pins can also be remapped at runtime via the CLI
+`resource` command — no re-flash needed.
 
-ESP32 default pins live in `Espfc/Target/TargetESP32.h` and
-`Espfc/Target/TargetEsp32Common.h`. Pins can also be remapped at runtime via the
-CLI `resource` command (no re-flash needed).
+Key defaults (ESP32):
+
+| Function | GPIO | Function | GPIO |
+| -------- | ---- | -------- | ---- |
+| Motors M0–M3 | 27, 25, 4, 12 | Receiver (UART2 RX) | 16 |
+| SPI (SCK/MOSI/MISO) | 18 / 23 / 19 | Gyro CS / Baro CS | 5 / 13 |
+| I2C (SDA/SCL) | 21 / 22 | Battery voltage / current | 36 / 39 |
+| Buzzer / LED / Button | 26 / 2 / 0 | | |
+
+## ⚙️ Setup & flying
+
+This firmware is flash-ready, but a flying drone still needs hardware assembly
+and configuration:
+
+1. Flash the firmware (`pio run -e esp32 -t upload`)
+2. Wire the FC per the connection guide (IMU, receiver, ESCs, power)
+3. Configure via CLI / Configurator: gyro calibration, receiver bind,
+   motor direction, modes and failsafe
+4. **Always test with props off first.**
+
+## 📜 License & credits
+
+MIT — see [`LICENSE`](LICENSE).
+Original firmware: **[ESP-FC](https://github.com/rtlopez/esp-fc)** by Rafał Łopez.
