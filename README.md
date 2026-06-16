@@ -2,6 +2,9 @@
 
 ESP-FC firmware for the **ESP32**, organized as PlatformIO libraries by subsystem.
 
+> Based on **[ESP-FC](https://github.com/rtlopez/esp-fc)** by Rafał Łopez (rtlopez).
+> Licensed under the MIT License — see [`LICENSE`](LICENSE).
+
 > ✅ This project is **buildable with PlatformIO**. Each subsystem lives under
 > `lib/<Name>/src/`, the entry point is `src/main.cpp`, and `platformio.ini`
 > defines the targets, build flags and the custom partition table.
