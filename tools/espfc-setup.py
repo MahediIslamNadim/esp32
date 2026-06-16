@@ -35,7 +35,33 @@ ESCS = ["DSHOT600", "DSHOT300", "DSHOT150", "ONESHOT125", "MULTISHOT",
 # Receiver providers (configured via serial port / Configurator)
 RECEIVERS = ["CRSF", "SBUS", "IBUS", "PPM"]
 
+# Pin settings, grouped for the manual editor (CLI keys: set pin_<x>=<gpio>).
+PIN_GROUPS = {
+    "Motors / outputs": ["pin_output_0", "pin_output_1", "pin_output_2",
+                          "pin_output_3", "pin_output_4", "pin_output_5",
+                          "pin_output_6", "pin_output_7"],
+    "Receiver input":   ["pin_input_rx", "pin_input_adc_0", "pin_input_adc_1"],
+    "UART serial":      ["pin_serial_0_tx", "pin_serial_0_rx",
+                          "pin_serial_1_tx", "pin_serial_1_rx",
+                          "pin_serial_2_tx", "pin_serial_2_rx"],
+    "SPI bus":          ["pin_spi_0_sck", "pin_spi_0_mosi", "pin_spi_0_miso",
+                          "pin_spi_cs_0", "pin_spi_cs_1", "pin_spi_cs_2"],
+    "I2C bus":          ["pin_i2c_scl", "pin_i2c_sda"],
+    "Misc":             ["pin_button", "pin_buzzer", "pin_buzzer_invert",
+                          "pin_led", "pin_led_invert", "pin_led_type"],
+}
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "espfc-settings.txt")
+
+def load_known_settings():
+    """All valid CLI setting names (from the bundled reference file)."""
+    try:
+        with open(SETTINGS_FILE) as f:
+            return [ln.strip() for ln in f if ln.strip()]
+    except OSError:
+        return []
 
 # ---- pretty printing ---------------------------------------------------------
 
@@ -253,23 +279,20 @@ def flash(board, port=None):
     info(f"Flashing {C.BOLD}{board}{C.END}" + (f" on {port}" if port else "") + " ...")
     return run(cmd, cwd=PROJECT_ROOT) == 0
 
-def apply_config(port, gyro, esc):
-    """Push the chosen settings to the freshly flashed board over the CLI."""
+def send_settings(port, settings):
+    """Apply a dict of {name: value} to the board over the CLI, then save."""
+    if not settings:
+        return True
+    if not port:
+        print_settings_cli(settings)
+        return False
     try:
         import serial
     except ImportError:
-        warn("pyserial missing — skipping auto-config.")
-        print_manual_config(gyro, esc)
-        return
-    cmds = []
-    if gyro and gyro != "AUTO":
-        cmds.append(f"set gyro_dev={gyro}")
-        cmds.append(f"set accel_dev={gyro}")
-    if esc:
-        cmds.append(f"set output_motor_protocol={esc}")
-    cmds.append("save")
-    if len(cmds) == 1:  # only "save"
-        return
+        warn("pyserial missing — apply these manually:")
+        print_settings_cli(settings)
+        return False
+    cmds = [f"set {k}={v}" for k, v in settings.items()] + ["save"]
     info("Applying configuration over the CLI ...")
     try:
         with serial.Serial(port, 115200, timeout=2) as ser:
@@ -282,19 +305,27 @@ def apply_config(port, gyro, esc):
                 time.sleep(0.3)
             time.sleep(2.0)  # allow save + reboot
         ok("Configuration applied and saved.")
+        return True
     except Exception as e:  # noqa: BLE001
-        warn(f"Auto-config failed ({e}).")
-        print_manual_config(gyro, esc)
+        warn(f"Auto-config failed ({e}). Apply these manually:")
+        print_settings_cli(settings)
+        return False
 
-def print_manual_config(gyro, esc):
-    print(f"\n{C.BOLD}Apply these manually via the CLI "
-          f"(pio device monitor):{C.END}")
-    if gyro and gyro != "AUTO":
-        print(f"  set gyro_dev={gyro}")
-        print(f"  set accel_dev={gyro}")
-    if esc:
-        print(f"  set output_motor_protocol={esc}")
+def print_settings_cli(settings):
+    print(f"\n{C.BOLD}Open the CLI (pio device monitor) and run:{C.END}")
+    for k, v in settings.items():
+        print(f"  set {k}={v}")
     print("  save")
+
+def apply_config(port, gyro, esc):
+    """Quick-setup convenience wrapper around send_settings()."""
+    settings = {}
+    if gyro and gyro != "AUTO":
+        settings["gyro_dev"] = gyro
+        settings["accel_dev"] = gyro
+    if esc:
+        settings["output_motor_protocol"] = esc
+    send_settings(port, settings)
 
 def receiver_hint(rx):
     print(f"\n{C.BOLD}Receiver ({rx}):{C.END}")
@@ -349,29 +380,124 @@ def quick_setup():
     if port and confirm("Apply the gyro/ESC config to the board now?"):
         apply_config(port, gyro, esc)
     else:
-        print_manual_config(gyro, esc)
+        apply_config(None, gyro, esc)  # prints commands when no port
     receiver_hint(rx)
 
     print(f"\n{C.G}{C.BOLD}Done.{C.END} Next: follow "
           f"pre-flight-checklist.md before flying (props off!).")
 
-def manual_config():
-    print(f"\n{C.BOLD}Manual Config{C.END} — build & flash, then tune via CLI.")
-    board = choose("Which board?", BOARDS)
-    if not build(board):
-        err("Build failed.")
-        return
-    ok("Build succeeded.")
-    if confirm("Flash to the board now?"):
-        port = wait_for_board()
-        if flash(board, port):
-            ok("Flash complete! 🎉")
-        else:
-            err("Flash failed.")
+# ---- manual config editor ----------------------------------------------------
+
+def edit_pins(settings):
+    """Customize any pin (motors, UART, SPI, I2C, buzzer, LED, …)."""
+    while True:
+        groups = list(PIN_GROUPS.keys())
+        print(f"\n{C.BOLD}Edit pins{C.END} "
+              f"{C.DIM}(values are GPIO numbers){C.END}")
+        for i, g in enumerate(groups):
+            print(f"  {i + 1}) {g}")
+        print(f"  0) Back")
+        raw = input("> ").strip()
+        if raw in ("0", "", "b", "back"):
             return
-    print(f"\nOpen the CLI to configure everything by hand:")
-    print(f"  {C.BOLD}pio device monitor{C.END}   (115200 baud)")
-    print("See HARDWARE.md for every gyro/ESC/receiver setting.")
+        if not (raw.isdigit() and 1 <= int(raw) <= len(groups)):
+            warn("Pick a group number."); continue
+        group = groups[int(raw) - 1]
+        for pin in PIN_GROUPS[group]:
+            cur = settings.get(pin)
+            cur_txt = f" {C.DIM}[current: {cur}]{C.END}" if cur is not None else ""
+            val = input(f"  {pin}{cur_txt} = ").strip()
+            if val:
+                settings[pin] = val
+
+def edit_setting(settings, known):
+    """Set any of the firmware's CLI settings by name."""
+    print(f"\n{C.BOLD}Edit a setting{C.END} "
+          f"{C.DIM}(type part of a name to search, blank to cancel){C.END}")
+    query = input("setting name> ").strip()
+    if not query:
+        return
+    if known and query not in known:
+        matches = [s for s in known if query in s]
+        if not matches:
+            warn(f"No setting matches '{query}'."); return
+        if len(matches) > 1:
+            print(f"  {len(matches)} matches:")
+            for m in matches[:40]:
+                print(f"    {m}")
+            if len(matches) > 40:
+                print(f"    ... (+{len(matches) - 40} more)")
+            return
+        query = matches[0]
+        info(f"Using '{query}'")
+    val = input(f"{query} = ").strip()
+    if val:
+        settings[query] = val
+        ok(f"set {query}={val} (pending)")
+
+def show_pending(settings):
+    if not settings:
+        print(f"\n{C.DIM}No changes yet.{C.END}")
+        return
+    print(f"\n{C.BOLD}Pending changes ({len(settings)}):{C.END}")
+    for k, v in settings.items():
+        print(f"  set {k}={v}")
+
+def manual_config():
+    print(f"\n{C.BOLD}{C.G}Manual Config{C.END} — full customization "
+          f"(pins + any setting).")
+    known = load_known_settings()
+    if known:
+        info(f"{len(known)} settings available (see tools/espfc-settings.txt)")
+    board = choose("Which board?", BOARDS)
+    settings = {}
+
+    while True:
+        print(f"""
+{C.BOLD}Manual menu{C.END}  {C.DIM}(board={board}, pending={len(settings)}){C.END}
+  1) Edit pins
+  2) Edit a setting (gyro, ESC, rates, filters, features, …)
+  3) Show pending changes
+  4) Clear pending changes
+  5) Build, flash & apply
+  0) Back to main menu""")
+        choice = input("> ").strip()
+        if choice == "1":
+            edit_pins(settings)
+        elif choice == "2":
+            edit_setting(settings, known)
+        elif choice == "3":
+            show_pending(settings)
+        elif choice == "4":
+            settings.clear(); ok("Cleared.")
+        elif choice == "5":
+            break
+        elif choice in ("0", "", "b", "back"):
+            return
+        else:
+            warn("Pick 0–5.")
+
+    show_pending(settings)
+    if not confirm("Build now?"):
+        return
+    if not build(board):
+        err("Build failed."); return
+    ok("Build succeeded.")
+    if not confirm("Flash to the board now?"):
+        if settings:
+            print_settings_cli(settings)
+        return
+    port = wait_for_board()
+    if not flash(board, port):
+        err("Flash failed."); return
+    ok("Flash complete! 🎉")
+    if settings:
+        if port and confirm("Apply your settings to the board now?"):
+            send_settings(port, settings)
+        else:
+            print_settings_cli(settings)
+    print(f"\n{C.G}{C.BOLD}Done.{C.END} Verify with 'pio device monitor' → "
+          f"'dump', then see pre-flight-checklist.md.")
 
 def menu():
     while True:

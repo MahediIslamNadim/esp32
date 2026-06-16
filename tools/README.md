@@ -34,6 +34,20 @@ curl -fsSL https://raw.githubusercontent.com/MahediIslamNadim/esp32/main/setup.s
 6. **Flashes** the board.
 7. **Applies your config** over the CLI (`set gyro_dev=…`, `set output_motor_protocol=…`, `save`).
 
+## Manual Config — full customization
+
+`Manual Config` lets you change **anything** before flashing:
+
+- **Edit pins** — every pin grouped by function: motors/outputs, receiver input,
+  UART (×3), SPI bus + chip-selects, I2C, buzzer/LED/button. Enter GPIO numbers.
+- **Edit a setting** — set any of the firmware's **343** CLI settings by name
+  (type part of a name to search): gyro, ESC, rates, PID, filters, features,
+  battery, GPS, and more.
+- **Show / clear** pending changes, then **build → flash → apply** in one go.
+
+All valid setting names live in [`espfc-settings.txt`](espfc-settings.txt)
+(generated from the firmware source).
+
 ## Options
 
 ```
