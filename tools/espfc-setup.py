@@ -51,6 +51,24 @@ PIN_GROUPS = {
                           "pin_led", "pin_led_invert", "pin_led_type"],
 }
 
+# Firmware default GPIOs for the ESP32 target (from Target/TargetESP32.h).
+# -1 means "unassigned". Shown as a hint in the manual pin editor.
+PIN_DEFAULTS = {
+    "esp32": {
+        "pin_output_0": 27, "pin_output_1": 25, "pin_output_2": 4,
+        "pin_output_3": 12, "pin_output_4": -1, "pin_output_5": -1,
+        "pin_output_6": -1, "pin_output_7": -1,
+        "pin_input_rx": 35, "pin_input_adc_0": 36, "pin_input_adc_1": 39,
+        "pin_serial_0_tx": 1, "pin_serial_0_rx": 3,
+        "pin_serial_1_tx": 33, "pin_serial_1_rx": 32,
+        "pin_serial_2_tx": 17, "pin_serial_2_rx": 16,
+        "pin_spi_0_sck": 18, "pin_spi_0_mosi": 23, "pin_spi_0_miso": 19,
+        "pin_spi_cs_0": 5, "pin_spi_cs_1": 13, "pin_spi_cs_2": -1,
+        "pin_i2c_scl": 22, "pin_i2c_sda": 21,
+        "pin_button": 0, "pin_buzzer": 26, "pin_led": 2,
+    },
+}
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "espfc-settings.txt")
@@ -388,12 +406,16 @@ def quick_setup():
 
 # ---- manual config editor ----------------------------------------------------
 
-def edit_pins(settings):
+def edit_pins(settings, board="esp32"):
     """Customize any pin (motors, UART, SPI, I2C, buzzer, LED, …)."""
+    defaults = PIN_DEFAULTS.get(board, {})
     while True:
         groups = list(PIN_GROUPS.keys())
         print(f"\n{C.BOLD}Edit pins{C.END} "
-              f"{C.DIM}(values are GPIO numbers){C.END}")
+              f"{C.DIM}(values are GPIO numbers; -1 = unassigned){C.END}")
+        if not defaults:
+            print(f"  {C.DIM}(defaults shown for esp32 only; this is {board})"
+                  f"{C.END}")
         for i, g in enumerate(groups):
             print(f"  {i + 1}) {g}")
         print(f"  0) Back")
@@ -403,10 +425,16 @@ def edit_pins(settings):
         if not (raw.isdigit() and 1 <= int(raw) <= len(groups)):
             warn("Pick a group number."); continue
         group = groups[int(raw) - 1]
+        print(f"  {C.DIM}(blank = keep current/default){C.END}")
         for pin in PIN_GROUPS[group]:
             cur = settings.get(pin)
-            cur_txt = f" {C.DIM}[current: {cur}]{C.END}" if cur is not None else ""
-            val = input(f"  {pin}{cur_txt} = ").strip()
+            if cur is not None:
+                hint = f" {C.DIM}[set to: {cur}]{C.END}"
+            elif pin in defaults:
+                hint = f" {C.DIM}[default: {defaults[pin]}]{C.END}"
+            else:
+                hint = ""
+            val = input(f"  {pin}{hint} = ").strip()
             if val:
                 settings[pin] = val
 
@@ -463,7 +491,7 @@ def manual_config():
   0) Back to main menu""")
         choice = input("> ").strip()
         if choice == "1":
-            edit_pins(settings)
+            edit_pins(settings, board)
         elif choice == "2":
             edit_setting(settings, known)
         elif choice == "3":
