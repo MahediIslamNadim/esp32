@@ -1,18 +1,20 @@
-# ESP-FC — ESP32 source snapshot
+# ESP-FC — ESP32 flight controller firmware
 
-This folder is an organized copy of all the C/C++ source files that the
-**ESP32** firmware build uses, arranged as separate files by subsystem.
+ESP-FC firmware for the **ESP32**, organized as PlatformIO libraries by subsystem.
 
-> ⚠️ This is a **reference/reading snapshot**. It does **not** build on its own
-> and it does **not** work in the Arduino IDE. The real firmware is built from
-> the project root with PlatformIO (it needs the Arduino-ESP32 framework, the
-> custom partition table, and specific build flags — none of which a plain
-> folder of files provides). To build/flash, use the project root:
+> ✅ This project is **buildable with PlatformIO**. Each subsystem lives under
+> `lib/<Name>/src/`, the entry point is `src/main.cpp`, and `platformio.ini`
+> defines the targets, build flags and the custom partition table.
+> (Note: it does **not** work in the Arduino IDE — use PlatformIO.)
 >
 > ```
-> pio run -e esp32            # build
-> pio run -e esp32 -t upload  # build + flash
+> pio run -e esp32              # build
+> pio run -e esp32 -t upload    # build + flash to ESP32
+> pio device monitor            # open serial monitor (115200)
 > ```
+>
+> Verified build: `esp32` env compiles and produces `firmware.bin`
+> (Flash ~77%, RAM ~24%). Other envs available: `esp32s3`, `esp32s2`, `esp32c3`.
 
 ## Layout
 
