@@ -110,10 +110,13 @@ Edit pins (values are GPIO numbers; -1 = unassigned)
   6) Misc                pin_button, pin_buzzer(_invert), pin_led(_invert/_type)
 ```
 
-Example:
+Each pin shows its **function name** and default GPIO, so it's clear what you're
+changing:
 ```
-  pin_output_0 [default: 27] = 26     # remap motor 0 to GPIO 26
-  pin_output_1 [default: 25] =        # keep default
+  pin_output_0 (Motor / output 0) [default: 27] = 26   # remap motor 0 to GPIO 26
+  pin_output_1 (Motor / output 1) [default: 25] =      # keep default
+  pin_serial_2_rx (UART2 RX (receiver)) [default: 16] =
+  pin_spi_cs_0 (SPI chip-select (gyro)) [default: 5] =
 ```
 
 > Defaults are shown for **esp32**. On s3/s2/c3 the tool says so and shows no

@@ -51,6 +51,41 @@ PIN_GROUPS = {
                           "pin_led", "pin_led_invert", "pin_led_type"],
 }
 
+# Human-readable description for each pin (shown in the manual editor).
+PIN_LABELS = {
+    "pin_output_0": "Motor / output 0",
+    "pin_output_1": "Motor / output 1",
+    "pin_output_2": "Motor / output 2",
+    "pin_output_3": "Motor / output 3",
+    "pin_output_4": "Motor / output 4",
+    "pin_output_5": "Motor / output 5",
+    "pin_output_6": "Motor / output 6",
+    "pin_output_7": "Motor / output 7",
+    "pin_input_rx": "PPM / RX input",
+    "pin_input_adc_0": "Battery voltage (ADC)",
+    "pin_input_adc_1": "Current sensor (ADC)",
+    "pin_serial_0_tx": "UART0 TX (USB / CLI)",
+    "pin_serial_0_rx": "UART0 RX (USB / CLI)",
+    "pin_serial_1_tx": "UART1 TX (spare / MSP)",
+    "pin_serial_1_rx": "UART1 RX (spare / MSP)",
+    "pin_serial_2_tx": "UART2 TX (telemetry)",
+    "pin_serial_2_rx": "UART2 RX (receiver)",
+    "pin_spi_0_sck": "SPI clock (SCK)",
+    "pin_spi_0_mosi": "SPI MOSI",
+    "pin_spi_0_miso": "SPI MISO",
+    "pin_spi_cs_0": "SPI chip-select (gyro)",
+    "pin_spi_cs_1": "SPI chip-select (baro)",
+    "pin_spi_cs_2": "SPI chip-select (spare)",
+    "pin_i2c_scl": "I2C clock (SCL)",
+    "pin_i2c_sda": "I2C data (SDA)",
+    "pin_button": "Button (boot / bind)",
+    "pin_buzzer": "Buzzer",
+    "pin_buzzer_invert": "Buzzer invert (0/1)",
+    "pin_led": "Status LED",
+    "pin_led_invert": "LED invert (0/1)",
+    "pin_led_type": "LED type",
+}
+
 # Firmware default GPIOs for the ESP32 target (from Target/TargetESP32.h).
 # -1 means "unassigned". Shown as a hint in the manual pin editor.
 PIN_DEFAULTS = {
@@ -434,7 +469,9 @@ def edit_pins(settings, board="esp32"):
                 hint = f" {C.DIM}[default: {defaults[pin]}]{C.END}"
             else:
                 hint = ""
-            val = input(f"  {pin}{hint} = ").strip()
+            label = PIN_LABELS.get(pin, "")
+            name = f"{pin} {C.B}({label}){C.END}" if label else pin
+            val = input(f"  {name}{hint} = ").strip()
             if val:
                 settings[pin] = val
 
