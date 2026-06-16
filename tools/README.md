@@ -212,6 +212,36 @@ then re-run `./setup.sh` (without sudo).
 
 ---
 
+## Configurator GUI (`espfc-configurator.py`)
+
+After the board is flashed, this desktop GUI tunes it live over USB using the
+**MSP protocol** (the same one Betaflight Configurator speaks). No firmware
+changes are needed — every command it uses is already handled in
+`lib/Espfc/src/Connect/MspProcessor.cpp`.
+
+```bash
+pip install pyserial      # tkinter ships with most Python builds
+python3 tools/espfc-configurator.py
+```
+
+Pick the serial port, click **Connect**, then use the tabs:
+
+| Tab | What it does | MSP commands |
+| --- | --- | --- |
+| **Setup** | Live roll/pitch/yaw readout; gyro/level & mag calibration; accelerometer trim and board alignment. Use this to fix a **crookedly-mounted board**: rest the drone on a flat surface and nudge the trim until the readout shows 0/0, or hit **Auto-fill from current tilt** to copy the live angles into the alignment fields. | `ATTITUDE`, `ACC_CALIBRATION`, `MAG_CALIBRATION`, `ACC_TRIM`, `BOARD_ALIGNMENT_CONFIG` |
+| **Sensors** | Live scrolling **gyro graph** (roll/pitch/yaw, °/s) with selectable scale — spot vibration/noise at a glance. | `RAW_IMU` |
+| **PID Tuning** | Read/edit roll, pitch, yaw **P/I/D** (flight stability). | `PID`, `SET_PID` |
+| **Rates / Sensitivity** | RC rate / super-rate / expo per axis (**stick feel**). | `RC_TUNING`, `SET_RC_TUNING` |
+| **Motors** | Per-motor test sliders behind a safety arm gate, plus **STOP ALL**. | `MOTOR`, `SET_MOTOR` |
+
+Changes apply instantly but live in RAM — click **Save to flash (EEPROM)** to
+keep them after a reboot (`MSP_EEPROM_WRITE`).
+
+> ⚠️ **Remove all propellers before using the Motors tab.** Output is forced to
+> minimum whenever the arm checkbox is cleared and on disconnect/close.
+
+---
+
 See also: [`../SETUP.md`](../SETUP.md) ·
 [`../HARDWARE.md`](../HARDWARE.md) ·
 [`../pre-flight-checklist.md`](../pre-flight-checklist.md)
