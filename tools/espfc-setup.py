@@ -1,0 +1,348 @@
+#!/usr/bin/env python3
+"""ESP-FC guided setup & flasher.
+
+One command takes a user from a fresh machine to a flashed ESP32:
+  * auto-installs dependencies (PlatformIO, pyserial)
+  * interactive menu (Quick Setup / Manual Config)
+  * builds the firmware for the chosen board
+  * detects the connected ESP32 and flashes it
+  * (Quick Setup) pushes the chosen gyro/ESC config over the CLI
+
+Run from the project root:
+    python3 tools/espfc-setup.py
+    python3 tools/espfc-setup.py --check   # only verify dependencies
+"""
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+# ---- option tables (values verified against the firmware source) -------------
+
+BOARDS = ["esp32", "esp32s3", "esp32s2", "esp32c3"]
+
+# CLI: set gyro_dev=<value>
+GYROS = ["AUTO", "MPU6500", "MPU6050", "MPU9250", "ICM20602", "MPU6000",
+         "LSM6DSO", "BMI160"]
+
+# CLI: set output_motor_protocol=<value>
+ESCS = ["DSHOT600", "DSHOT300", "DSHOT150", "ONESHOT125", "MULTISHOT",
+        "PWM", "BRUSHED"]
+
+# Receiver providers (configured via serial port / Configurator)
+RECEIVERS = ["CRSF", "SBUS", "IBUS", "PPM"]
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ---- pretty printing ---------------------------------------------------------
+
+class C:
+    G = "\033[92m"; Y = "\033[93m"; R = "\033[91m"; B = "\033[94m"
+    BOLD = "\033[1m"; DIM = "\033[2m"; END = "\033[0m"
+
+def _supports_color():
+    return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+
+if not _supports_color():
+    for _n in ("G", "Y", "R", "B", "BOLD", "DIM", "END"):
+        setattr(C, _n, "")
+
+def info(msg):  print(f"{C.B}•{C.END} {msg}")
+def ok(msg):    print(f"{C.G}✓{C.END} {msg}")
+def warn(msg):  print(f"{C.Y}!{C.END} {msg}")
+def err(msg):   print(f"{C.R}✗{C.END} {msg}")
+
+def banner():
+    print(f"""{C.BOLD}{C.B}
+  ╔══════════════════════════════════════╗
+  ║          ESP-FC  Setup  Tool         ║
+  ║   build · configure · flash · fly    ║
+  ╚══════════════════════════════════════╝{C.END}""")
+
+# ---- dependency handling -----------------------------------------------------
+
+def run(cmd, **kw):
+    """Run a command, streaming output. Returns the exit code."""
+    print(f"{C.DIM}$ {' '.join(cmd)}{C.END}")
+    return subprocess.call(cmd, **kw)
+
+def pio_cmd():
+    """Return a runnable PlatformIO command, or None if not available."""
+    exe = shutil.which("pio") or shutil.which("platformio")
+    if exe:
+        return [exe]
+    try:
+        import platformio  # noqa: F401
+        return [sys.executable, "-m", "platformio"]
+    except ImportError:
+        return None
+
+def pip_install(pkg):
+    return run([sys.executable, "-m", "pip", "install", "--upgrade", pkg]) == 0
+
+def ensure_pip():
+    try:
+        import pip  # noqa: F401
+        return True
+    except ImportError:
+        err("pip is not available for this Python. Install pip and re-run.")
+        return False
+
+def ensure_platformio():
+    if pio_cmd():
+        ok("PlatformIO found")
+        return True
+    warn("PlatformIO not found — installing...")
+    if pip_install("platformio") and pio_cmd():
+        ok("PlatformIO installed")
+        return True
+    err("Could not install PlatformIO. Try: pip install platformio")
+    return False
+
+def ensure_pyserial():
+    try:
+        import serial  # noqa: F401
+        import serial.tools.list_ports  # noqa: F401
+        ok("pyserial found")
+        return True
+    except ImportError:
+        warn("pyserial not found — installing...")
+        if pip_install("pyserial"):
+            ok("pyserial installed")
+            return True
+        warn("pyserial unavailable — auto port detection/config will be limited")
+        return False
+
+def check_dependencies():
+    info(f"Python {sys.version.split()[0]}")
+    if not ensure_pip():
+        return False
+    okp = ensure_platformio()
+    ensure_pyserial()  # optional; don't fail the whole run
+    return okp
+
+# ---- prompts -----------------------------------------------------------------
+
+def choose(title, options, default_index=0):
+    print(f"\n{C.BOLD}{title}{C.END}")
+    for i, opt in enumerate(options):
+        mark = f"{C.DIM}(default){C.END}" if i == default_index else ""
+        print(f"  {i + 1}) {opt} {mark}")
+    while True:
+        raw = input(f"> [{default_index + 1}] ").strip()
+        if raw == "":
+            return options[default_index]
+        if raw.isdigit() and 1 <= int(raw) <= len(options):
+            return options[int(raw) - 1]
+        warn("Invalid choice, try again.")
+
+def confirm(question, default=True):
+    suffix = "[Y/n]" if default else "[y/N]"
+    raw = input(f"{question} {suffix} ").strip().lower()
+    if raw == "":
+        return default
+    return raw in ("y", "yes")
+
+# ---- port detection ----------------------------------------------------------
+
+def detect_port():
+    try:
+        from serial.tools import list_ports
+    except ImportError:
+        return None
+    candidates = []
+    for p in list_ports.comports():
+        desc = (p.description or "") + (p.manufacturer or "")
+        if any(k in desc for k in ("CP210", "CH340", "USB", "UART", "Silicon",
+                                   "wch", "Espressif")):
+            candidates.append(p.device)
+    if not candidates:  # fall back to any non-bluetooth serial device
+        candidates = [p.device for p in list_ports.comports()
+                      if "Bluetooth" not in (p.description or "")]
+    return candidates[0] if candidates else None
+
+# ---- build / flash / configure ----------------------------------------------
+
+def build(board):
+    pio = pio_cmd()
+    info(f"Building firmware for {C.BOLD}{board}{C.END} ...")
+    return run(pio + ["run", "-e", board], cwd=PROJECT_ROOT) == 0
+
+def flash(board, port=None):
+    pio = pio_cmd()
+    cmd = pio + ["run", "-e", board, "-t", "upload"]
+    if port:
+        cmd += ["--upload-port", port]
+    info(f"Flashing {C.BOLD}{board}{C.END}" + (f" on {port}" if port else "") + " ...")
+    return run(cmd, cwd=PROJECT_ROOT) == 0
+
+def apply_config(port, gyro, esc):
+    """Push the chosen settings to the freshly flashed board over the CLI."""
+    try:
+        import serial
+    except ImportError:
+        warn("pyserial missing — skipping auto-config.")
+        print_manual_config(gyro, esc)
+        return
+    cmds = []
+    if gyro and gyro != "AUTO":
+        cmds.append(f"set gyro_dev={gyro}")
+        cmds.append(f"set accel_dev={gyro}")
+    if esc:
+        cmds.append(f"set output_motor_protocol={esc}")
+    cmds.append("save")
+    if len(cmds) == 1:  # only "save"
+        return
+    info("Applying configuration over the CLI ...")
+    try:
+        with serial.Serial(port, 115200, timeout=2) as ser:
+            time.sleep(2.0)  # let the board boot after flashing
+            ser.write(b"\r\n")
+            time.sleep(0.3)
+            for c in cmds:
+                ser.write((c + "\r\n").encode())
+                print(f"  {C.DIM}>{C.END} {c}")
+                time.sleep(0.3)
+            time.sleep(2.0)  # allow save + reboot
+        ok("Configuration applied and saved.")
+    except Exception as e:  # noqa: BLE001
+        warn(f"Auto-config failed ({e}).")
+        print_manual_config(gyro, esc)
+
+def print_manual_config(gyro, esc):
+    print(f"\n{C.BOLD}Apply these manually via the CLI "
+          f"(pio device monitor):{C.END}")
+    if gyro and gyro != "AUTO":
+        print(f"  set gyro_dev={gyro}")
+        print(f"  set accel_dev={gyro}")
+    if esc:
+        print(f"  set output_motor_protocol={esc}")
+    print("  save")
+
+def receiver_hint(rx):
+    print(f"\n{C.BOLD}Receiver ({rx}):{C.END}")
+    if rx == "PPM":
+        print("  Wire the PPM signal to GPIO 35, then enable PPM input in the "
+              "ESP-FC Configurator.")
+    else:
+        print(f"  Wire the receiver to UART2 (RX=16, TX=17), then in the ESP-FC "
+              f"Configurator set the receiver to Serial/{rx} on UART2.")
+    print(f"  {C.DIM}(Receiver protocol is a serial-port function, set via the "
+          f"Configurator — see HARDWARE.md){C.END}")
+
+# ---- flows -------------------------------------------------------------------
+
+def wait_for_board():
+    print(f"\n{C.BOLD}{C.Y}>> Connect your ESP32 to USB now, then press "
+          f"Enter.{C.END}")
+    input()
+    port = detect_port()
+    if port:
+        ok(f"Detected board on {C.BOLD}{port}{C.END}")
+    else:
+        warn("No port auto-detected; PlatformIO will pick one automatically.")
+    return port
+
+def quick_setup():
+    print(f"\n{C.BOLD}{C.G}Quick Setup{C.END} — answer a few questions.")
+    board = choose("Which board?", BOARDS)
+    gyro = choose("Which gyro / IMU?", GYROS)
+    esc = choose("Which ESC protocol?", ESCS)
+    rx = choose("Which receiver?", RECEIVERS)
+
+    print(f"\n{C.BOLD}Summary{C.END}")
+    print(f"  board={board}  gyro={gyro}  esc={esc}  receiver={rx}")
+    if not confirm("Proceed to build?"):
+        return
+
+    if not build(board):
+        err("Build failed. Fix the error above and try again.")
+        return
+    ok("Build succeeded.")
+
+    if not confirm("Flash to the board now?"):
+        info("Skipped flashing. You can flash later from the menu.")
+        return
+    port = wait_for_board()
+    if not flash(board, port):
+        err("Flash failed. Check the cable / drivers and try again.")
+        return
+    ok("Flash complete! 🎉")
+
+    if port and confirm("Apply the gyro/ESC config to the board now?"):
+        apply_config(port, gyro, esc)
+    else:
+        print_manual_config(gyro, esc)
+    receiver_hint(rx)
+
+    print(f"\n{C.G}{C.BOLD}Done.{C.END} Next: follow "
+          f"pre-flight-checklist.md before flying (props off!).")
+
+def manual_config():
+    print(f"\n{C.BOLD}Manual Config{C.END} — build & flash, then tune via CLI.")
+    board = choose("Which board?", BOARDS)
+    if not build(board):
+        err("Build failed.")
+        return
+    ok("Build succeeded.")
+    if confirm("Flash to the board now?"):
+        port = wait_for_board()
+        if flash(board, port):
+            ok("Flash complete! 🎉")
+        else:
+            err("Flash failed.")
+            return
+    print(f"\nOpen the CLI to configure everything by hand:")
+    print(f"  {C.BOLD}pio device monitor{C.END}   (115200 baud)")
+    print("See HARDWARE.md for every gyro/ESC/receiver setting.")
+
+def menu():
+    while True:
+        print(f"""
+{C.BOLD}Main menu{C.END}
+  1) Quick Setup   {C.DIM}(recommended){C.END}
+  2) Manual Config
+  3) Exit""")
+        choice = input("> ").strip()
+        if choice == "1":
+            quick_setup()
+        elif choice == "2":
+            manual_config()
+        elif choice in ("3", "q", "quit", "exit", ""):
+            print("Bye 👋")
+            return
+        else:
+            warn("Pick 1, 2 or 3.")
+
+# ---- entry point -------------------------------------------------------------
+
+def main():
+    ap = argparse.ArgumentParser(description="ESP-FC guided setup & flasher")
+    ap.add_argument("--check", action="store_true",
+                    help="verify dependencies and exit")
+    args = ap.parse_args()
+
+    banner()
+    info("Checking dependencies...")
+    if not check_dependencies():
+        err("Missing required dependencies. See messages above.")
+        sys.exit(1)
+    ok("All set.")
+
+    if args.check:
+        return
+
+    if not os.path.exists(os.path.join(PROJECT_ROOT, "platformio.ini")):
+        err("platformio.ini not found — run this from the ESP-FC project root.")
+        sys.exit(1)
+
+    try:
+        menu()
+    except (KeyboardInterrupt, EOFError):
+        print("\nInterrupted. Bye 👋")
+
+if __name__ == "__main__":
+    main()

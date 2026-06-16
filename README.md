@@ -12,6 +12,27 @@ A complete, **buildable** multirotor flight controller firmware for the **ESP32*
 
 ---
 
+## ⚡ Quick start (one command)
+
+New to this? Use the guided setup tool — it auto-installs dependencies, asks a few
+questions, builds, detects your ESP32 and flashes it:
+
+```bash
+# Linux / macOS
+./setup.sh
+```
+```bat
+REM Windows: double-click setup.bat, or
+python tools\espfc-setup.py
+```
+
+It runs a menu (**Quick Setup** / **Manual Config**), then prompts you to connect
+the board and flashes it. See [`tools/README.md`](tools/README.md) for details.
+
+For the manual route, see **Build & Flash** below.
+
+---
+
 ## ✨ Features
 
 - **Flight control** — PID controller, configurable rates, multiple flight modes
