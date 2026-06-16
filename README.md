@@ -27,7 +27,8 @@ python tools\espfc-setup.py
 ```
 
 It runs a menu (**Quick Setup** / **Manual Config**), then prompts you to connect
-the board and flashes it. See [`tools/README.md`](tools/README.md) for details.
+the board and flashes it. Full docs: **[tools/README.md](tools/README.md)** —
+every menu option, pins, settings, flags and troubleshooting.
 
 For the manual route, see **Build & Flash** below.
 
