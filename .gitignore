@@ -22,3 +22,6 @@ Thumbs.db
 # Python
 __pycache__/
 *.pyc
+
+# ESP-FC setup tool venv
+.espfc-venv/

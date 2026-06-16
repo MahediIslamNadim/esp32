@@ -69,8 +69,31 @@ def run(cmd, **kw):
     print(f"{C.DIM}$ {' '.join(cmd)}{C.END}")
     return subprocess.call(cmd, **kw)
 
+VENV_DIR = os.path.join(PROJECT_ROOT, ".espfc-venv")
+
+def venv_python(venv=VENV_DIR):
+    win = os.path.join(venv, "Scripts", "python.exe")
+    return win if os.path.exists(win) else os.path.join(venv, "bin", "python")
+
+def in_our_venv():
+    return os.environ.get("ESPFC_IN_VENV") == "1"
+
+def venv_ready():
+    vpy = venv_python()
+    if not os.path.exists(vpy):
+        return False
+    code = subprocess.call([vpy, "-c", "import platformio, serial"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return code == 0
+
 def pio_cmd():
     """Return a runnable PlatformIO command, or None if not available."""
+    if in_our_venv():
+        try:
+            import platformio  # noqa: F401
+            return [sys.executable, "-m", "platformio"]
+        except ImportError:
+            return None
     exe = shutil.which("pio") or shutil.which("platformio")
     if exe:
         return [exe]
@@ -80,8 +103,32 @@ def pio_cmd():
     except ImportError:
         return None
 
-def pip_install(pkg):
-    return run([sys.executable, "-m", "pip", "install", "--upgrade", pkg]) == 0
+def pip_install(pkg, py=None):
+    return run([py or sys.executable, "-m", "pip", "install", "--upgrade",
+                pkg]) == 0
+
+def create_venv():
+    """Create an isolated venv and install PlatformIO + pyserial into it."""
+    info("Setting up an isolated environment (.espfc-venv) ...")
+    if subprocess.call([sys.executable, "-m", "venv", VENV_DIR]) != 0:
+        err("Could not create a virtualenv.")
+        warn("Install the venv module first:  sudo apt install python3-venv")
+        return False
+    vpy = venv_python()
+    pip_install("pip", vpy)  # best effort
+    if pip_install("platformio", vpy) and pip_install("pyserial", vpy):
+        ok("Dependencies installed in .espfc-venv")
+        return True
+    err("Failed to install dependencies inside the venv.")
+    return False
+
+def relaunch_in_venv():
+    """Re-run this script using the venv's Python (deps available there)."""
+    vpy = venv_python()
+    info("Relaunching inside the isolated environment ...")
+    env = dict(os.environ, ESPFC_IN_VENV="1")
+    script = os.path.abspath(__file__)
+    os.execve(vpy, [vpy, script, *sys.argv[1:]], env)
 
 def ensure_pip():
     try:
@@ -91,38 +138,65 @@ def ensure_pip():
         err("pip is not available for this Python. Install pip and re-run.")
         return False
 
-def ensure_platformio():
-    if pio_cmd():
-        ok("PlatformIO found")
-        return True
-    warn("PlatformIO not found — installing...")
-    if pip_install("platformio") and pio_cmd():
-        ok("PlatformIO installed")
-        return True
-    err("Could not install PlatformIO. Try: pip install platformio")
-    return False
-
-def ensure_pyserial():
+def has_serial():
     try:
         import serial  # noqa: F401
         import serial.tools.list_ports  # noqa: F401
-        ok("pyserial found")
         return True
     except ImportError:
-        warn("pyserial not found — installing...")
-        if pip_install("pyserial"):
-            ok("pyserial installed")
-            return True
-        warn("pyserial unavailable — auto port detection/config will be limited")
         return False
 
 def check_dependencies():
     info(f"Python {sys.version.split()[0]}")
+
+    # Already relaunched inside our venv: deps are installed there.
+    if in_our_venv():
+        if pio_cmd() and has_serial():
+            ok("PlatformIO found"); ok("pyserial found")
+            return True
+        err("Isolated environment is incomplete — delete .espfc-venv and retry.")
+        return False
+
+    if os.name == "posix" and hasattr(os, "geteuid") and os.geteuid() == 0:
+        warn("Running as root (sudo) is not recommended — run without sudo.")
+
+    # A previously created venv we can reuse straight away.
+    if venv_ready():
+        ok("Using existing isolated environment (.espfc-venv)")
+        relaunch_in_venv()  # does not return
+
     if not ensure_pip():
         return False
-    okp = ensure_platformio()
-    ensure_pyserial()  # optional; don't fail the whole run
-    return okp
+
+    have_pio = pio_cmd() is not None
+    have_serial = has_serial()
+    if have_pio and have_serial:
+        ok("PlatformIO found"); ok("pyserial found")
+        return True
+
+    # Try a normal install first; if the system Python is externally managed
+    # (PEP 668), fall back to an isolated venv and relaunch inside it.
+    need_venv = False
+    if not have_pio:
+        warn("PlatformIO not found — installing...")
+        if pip_install("platformio") and pio_cmd():
+            ok("PlatformIO installed")
+        else:
+            need_venv = True
+    if not need_venv and not have_serial:
+        warn("pyserial not found — installing...")
+        if pip_install("pyserial"):
+            ok("pyserial installed")
+        else:
+            need_venv = True
+
+    if need_venv:
+        warn("System Python is externally managed — using an isolated venv.")
+        if create_venv():
+            relaunch_in_venv()  # does not return
+        err("Could not set up dependencies. Try: pipx install platformio")
+        return False
+    return True
 
 # ---- prompts -----------------------------------------------------------------
 

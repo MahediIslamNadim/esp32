@@ -42,6 +42,11 @@ python3 tools/espfc-setup.py --check    # verify dependencies only, then exit
 
 ## Notes
 
+- **Do not use `sudo`.** On Debian/Kali/Ubuntu the system Python is
+  "externally managed" (PEP 668), so the tool automatically creates an isolated
+  virtualenv (`.espfc-venv`) and installs PlatformIO + pyserial there, then
+  relaunches itself inside it. (If venv creation fails, run once:
+  `sudo apt install python3-venv`.)
 - **Receiver protocol** (CRSF/SBUS/IBUS/PPM) is a serial-port function and is set
   in the ESP-FC Configurator — the tool prints exact instructions for your choice.
 - **USB drivers** (CP210x / CH340) may need a manual install on Windows; if no
