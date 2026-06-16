@@ -110,6 +110,9 @@ and configuration:
    motor direction, modes and failsafe
 4. **Always test with props off first.**
 
+Follow the step-by-step **[pre-flight checklist](pre-flight-checklist.md)** before
+your first flight.
+
 ## 📜 License & credits
 
 MIT — see [`LICENSE`](LICENSE).
