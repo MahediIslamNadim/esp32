@@ -108,6 +108,25 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              "espfc-settings.txt")
 
+# GPIOs that are silk-printed with a special name on most ESP32 boards.
+GPIO_BOARD_NAME = {36: "VP", 37: "VP2", 38: "VN2", 39: "VN", 0: "BOOT"}
+GPIO_INPUT_ONLY = {34, 35, 36, 37, 38, 39}
+
+def gpio_desc(value):
+    """Describe a GPIO number with its ESP32 board silk label + caveats."""
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if n < 0:
+        return "unassigned"
+    parts = [f"GPIO{n}"]
+    if n in GPIO_BOARD_NAME:
+        parts.append(f'board "{GPIO_BOARD_NAME[n]}"')
+    if n in GPIO_INPUT_ONLY:
+        parts.append("input-only")
+    return ", ".join(parts)
+
 def load_known_settings():
     """All valid CLI setting names (from the bundled reference file)."""
     try:
@@ -464,9 +483,9 @@ def edit_pins(settings, board="esp32"):
         for pin in PIN_GROUPS[group]:
             cur = settings.get(pin)
             if cur is not None:
-                hint = f" {C.DIM}[set to: {cur}]{C.END}"
+                hint = f" {C.DIM}[set to: {gpio_desc(cur)}]{C.END}"
             elif pin in defaults:
-                hint = f" {C.DIM}[default: {defaults[pin]}]{C.END}"
+                hint = f" {C.DIM}[default: {gpio_desc(defaults[pin])}]{C.END}"
             else:
                 hint = ""
             label = PIN_LABELS.get(pin, "")
@@ -474,6 +493,7 @@ def edit_pins(settings, board="esp32"):
             val = input(f"  {name}{hint} = ").strip()
             if val:
                 settings[pin] = val
+                ok(f"{pin} = {gpio_desc(val)}")
 
 def edit_setting(settings, known):
     """Set any of the firmware's CLI settings by name."""

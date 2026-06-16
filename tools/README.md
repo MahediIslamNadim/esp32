@@ -110,14 +110,17 @@ Edit pins (values are GPIO numbers; -1 = unassigned)
   6) Misc                pin_button, pin_buzzer(_invert), pin_led(_invert/_type)
 ```
 
-Each pin shows its **function name** and default GPIO, so it's clear what you're
-changing:
+Each pin shows its **function name**, the default **GPIO**, the **board silk
+label** (e.g. `VP`/`VN`) and caveats like `input-only`, so it's clear what you're
+changing and which physical pin to find on the board:
 ```
-  pin_output_0 (Motor / output 0) [default: 27] = 26   # remap motor 0 to GPIO 26
-  pin_output_1 (Motor / output 1) [default: 25] =      # keep default
-  pin_serial_2_rx (UART2 RX (receiver)) [default: 16] =
-  pin_spi_cs_0 (SPI chip-select (gyro)) [default: 5] =
+  pin_output_0 (Motor / output 0) [default: GPIO27] = 26   # remap motor 0
+  pin_input_adc_0 (Battery voltage (ADC)) [default: GPIO36, board "VP", input-only] =
+  pin_input_rx (PPM / RX input) [default: GPIO35, input-only] =
+  pin_spi_cs_0 (SPI chip-select (gyro)) [default: GPIO5] =
 ```
+Special ESP32 board labels: GPIO36=`VP`, GPIO39=`VN`, GPIO0=`BOOT`; GPIO34–39 are
+**input-only** (no output / no pull-ups).
 
 > Defaults are shown for **esp32**. On s3/s2/c3 the tool says so and shows no
 > default (those boards differ) — enter the GPIO you want explicitly.
